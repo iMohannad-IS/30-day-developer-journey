@@ -45,15 +45,31 @@ app.get("/api/test-db", async (req, res) => {
 // Get All Students
 // =========================
 
-app.get("/api/students", async (req, res) => {
+app.get("/api/students", async (req, res, next) => {
     try {
+        // Get page and limit from query parameters
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 10;
+
+        // Calculate offset
+        const offset = (page - 1) * limit;
+
+        // Get students
         const [rows] = await pool.query(
-            "SELECT * FROM students"
+            `SELECT *
+             FROM students
+             LIMIT ? OFFSET ?`,
+            [limit, offset]
         );
 
-        res.json(rows);
+        res.status(200).json({
+            page: page,
+            limit: limit,
+            students: rows
+        });
 
     } catch (error) {
+        console.error(error);
         next(error);
     }
 });
@@ -90,7 +106,7 @@ app.get("/api/students/:id", async (req, res) => {
 // Delete Student
 // =========================
 
-app.delete("/api/students/:id", async (req, res) => {
+app.delete("/api/students/:id", async (req, res, next) => {
     try {
         const studentId = req.params.id;
 
@@ -111,6 +127,7 @@ app.delete("/api/students/:id", async (req, res) => {
         });
 
     } catch (error) {
+        console.error(error);
         next(error);
     }
 });
