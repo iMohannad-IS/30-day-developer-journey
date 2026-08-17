@@ -41,9 +41,66 @@ app.get("/api/test-db", async (req, res) => {
 });
 
 
+app.get("/api/students", async (req, res, next) => {
+    try {
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 10;
+
+        const { major, sort, order } = req.query;
+
+        const offset = (page - 1) * limit;
+
+        let query = "SELECT * FROM students";
+
+        const params = [];
+
+        // Filtering
+        if (major) {
+            query += " WHERE major = ?";
+            params.push(major);
+        }
+
+        // Sorting
+        const allowedSortFields = [
+            "student_id",
+            "name",
+            "email",
+            "major"
+        ];
+
+        const allowedOrders = ["asc", "desc"];
+
+        if (sort && allowedSortFields.includes(sort)) {
+            const sortOrder = allowedOrders.includes(order?.toLowerCase())
+                ? order.toUpperCase()
+                : "ASC";
+
+            query += ` ORDER BY ${sort} ${sortOrder}`;
+        }
+
+        // Pagination
+        query += " LIMIT ? OFFSET ?";
+        params.push(limit, offset);
+
+        const [rows] = await pool.query(query, params);
+
+        res.status(200).json({
+            page,
+            limit,
+            students: rows
+        });
+
+    } catch (error) {
+        console.error(error);
+        next(error);
+    }
+});
+
 // =========================
 // Get All Students
 // =========================
+
+
 
 app.get("/api/students", async (req, res, next) => {
     try {
