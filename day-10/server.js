@@ -1,5 +1,7 @@
 const express = require("express");
 const mysql = require("mysql2/promise");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
 const app = express();
@@ -94,6 +96,153 @@ app.get("/api/students", async (req, res, next) => {
         console.error(error);
         next(error);
     }
+});
+
+app.post("/api/register", async (req, res, next) => {
+    try {
+        const { email, password } = req.body;
+
+        // Validation
+        if (!email || !password) {
+            return res.status(400).json({
+                message: "Email and password are required"
+            });
+        }
+
+        // Check if user already exists
+        const [existingUsers] = await pool.query(
+            "SELECT * FROM users WHERE email = ?",
+            [email]
+        );
+
+        if (existingUsers.length > 0) {
+            return res.status(409).json({
+                message: "Email already exists"
+            });
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Insert user
+        const [result] = await pool.query(
+            "INSERT INTO users (email, password) VALUES (?, ?)",
+            [email, hashedPassword]
+        );
+
+        res.status(201).json({
+            message: "User registered successfully",
+            user_id: result.insertId
+        });
+
+    } catch (error) {
+        console.error(error);
+        next(error);
+    }
+});
+
+app.post("/api/login", async (req, res, next) => {
+    try {
+        const { email, password } = req.body;
+
+        // Validation
+        if (!email || !password) {
+            return res.status(400).json({
+                message: "Email and password are required"
+            });
+        }
+
+        // Find user
+        const [users] = await pool.query(
+            "SELECT * FROM users WHERE email = ?",
+            [email]
+        );
+
+        if (users.length === 0) {
+            return res.status(401).json({
+                message: "Invalid email or password"
+            });
+        }
+
+        const user = users[0];
+
+        // Compare password with hash
+        const passwordMatch = await bcrypt.compare(
+            password,
+            user.password
+        );
+
+        if (!passwordMatch) {
+            return res.status(401).json({
+                message: "Invalid email or password"
+            });
+        }
+
+        const token = jwt.sign(
+    {
+        user_id: user.user_id,
+        email: user.email
+    },
+    process.env.JWT_SECRET,
+    {
+        expiresIn: "1h"
+    }
+);
+
+        // Login successful
+       res.status(200).json({
+    message: "Login successful",
+    token
+});
+
+    } catch (error) {
+        console.error(error);
+        next(error);
+    }
+});
+
+
+// =========================
+// Authentication Middleware
+// =========================
+
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+        return res.status(401).json({
+            message: "Access token required"
+        });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    try {
+        const decoded = jwt.verify(
+            token,
+            process.env.JWT_SECRET
+        );
+
+        req.user = decoded;
+
+        next();
+
+    } catch (error) {
+        return res.status(401).json({
+            message: "Invalid or expired token"
+        });
+    }
+};
+
+// =========================
+// Protected Route
+// =========================
+
+app.get("/api/profile", authenticateToken, (req, res) => {
+    res.status(200).json({
+        message: "Access granted",
+        user: req.user
+    });
 });
 
 // =========================
