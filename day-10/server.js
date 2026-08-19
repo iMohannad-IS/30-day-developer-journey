@@ -26,7 +26,7 @@ const pool = mysql.createPool({
 // Test Database Connection
 // =========================
 
-app.get("/api/test-db", async (req, res) => {
+app.get("/api/test-db", async (req, res, next) => {
     try {
         const [rows] = await pool.query(
             "SELECT 1 AS connected"
@@ -42,6 +42,11 @@ app.get("/api/test-db", async (req, res) => {
     }
 });
 
+
+// =========================
+// Get All Students
+// Filtering + Sorting + Pagination
+// =========================
 
 app.get("/api/students", async (req, res, next) => {
     try {
@@ -73,18 +78,24 @@ app.get("/api/students", async (req, res, next) => {
         const allowedOrders = ["asc", "desc"];
 
         if (sort && allowedSortFields.includes(sort)) {
-            const sortOrder = allowedOrders.includes(order?.toLowerCase())
-                ? order.toUpperCase()
-                : "ASC";
+
+            const sortOrder =
+                allowedOrders.includes(order?.toLowerCase())
+                    ? order.toUpperCase()
+                    : "ASC";
 
             query += ` ORDER BY ${sort} ${sortOrder}`;
         }
 
         // Pagination
         query += " LIMIT ? OFFSET ?";
+
         params.push(limit, offset);
 
-        const [rows] = await pool.query(query, params);
+        const [rows] = await pool.query(
+            query,
+            params
+        );
 
         res.status(200).json({
             page,
@@ -98,8 +109,14 @@ app.get("/api/students", async (req, res, next) => {
     }
 });
 
+
+// =========================
+// Register
+// =========================
+
 app.post("/api/register", async (req, res, next) => {
     try {
+
         const { email, password } = req.body;
 
         // Validation
@@ -122,17 +139,28 @@ app.post("/api/register", async (req, res, next) => {
         }
 
         // Hash password
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const hashedPassword = await bcrypt.hash(
+            password,
+            10
+        );
+
+        // Every new registered user is a student
+        const role = "student";
 
         // Insert user
         const [result] = await pool.query(
-            "INSERT INTO users (email, password) VALUES (?, ?)",
-            [email, hashedPassword]
+            "INSERT INTO users (email, password, role) VALUES (?, ?, ?)",
+            [
+                email,
+                hashedPassword,
+                role
+            ]
         );
 
         res.status(201).json({
             message: "User registered successfully",
-            user_id: result.insertId
+            user_id: result.insertId,
+            role
         });
 
     } catch (error) {
@@ -141,8 +169,14 @@ app.post("/api/register", async (req, res, next) => {
     }
 });
 
+
+// =========================
+// Login
+// =========================
+
 app.post("/api/login", async (req, res, next) => {
     try {
+
         const { email, password } = req.body;
 
         // Validation
@@ -178,22 +212,24 @@ app.post("/api/login", async (req, res, next) => {
             });
         }
 
+        // Create JWT
         const token = jwt.sign(
-    {
-        user_id: user.user_id,
-        email: user.email
-    },
-    process.env.JWT_SECRET,
-    {
-        expiresIn: "1h"
-    }
-);
+            {
+                user_id: user.user_id,
+                email: user.email,
+                role: user.role
+            },
+            process.env.JWT_SECRET,
+            {
+                expiresIn: "1h"
+            }
+        );
 
         // Login successful
-       res.status(200).json({
-    message: "Login successful",
-    token
-});
+        res.status(200).json({
+            message: "Login successful",
+            token
+        });
 
     } catch (error) {
         console.error(error);
@@ -207,86 +243,105 @@ app.post("/api/login", async (req, res, next) => {
 // =========================
 
 const authenticateToken = (req, res, next) => {
+
     const authHeader = req.headers.authorization;
 
+    // Check if token exists
     if (!authHeader) {
         return res.status(401).json({
             message: "Access token required"
         });
     }
 
+    // Extract token
     const token = authHeader.split(" ")[1];
 
     try {
+
+        // Verify JWT
         const decoded = jwt.verify(
             token,
             process.env.JWT_SECRET
         );
 
+        // Save user information
         req.user = decoded;
 
+        // Continue to next middleware
         next();
 
     } catch (error) {
+
         return res.status(401).json({
             message: "Invalid or expired token"
         });
     }
 };
 
-// =========================
-// Protected Route
-// =========================
-
-app.get("/api/profile", authenticateToken, (req, res) => {
-    res.status(200).json({
-        message: "Access granted",
-        user: req.user
-    });
-});
 
 // =========================
-// Get All Students
+// Authorization Middleware
 // =========================
 
+const authorizeRole = (...allowedRoles) => {
+
+    return (req, res, next) => {
+
+        // Check user role
+        if (!allowedRoles.includes(req.user.role)) {
+
+            return res.status(403).json({
+                message: "Access forbidden"
+            });
+        }
+
+        next();
+    };
+};
 
 
-app.get("/api/students", async (req, res, next) => {
-    try {
-        // Get page and limit from query parameters
-        const page = Number(req.query.page) || 1;
-        const limit = Number(req.query.limit) || 10;
+// =========================
+// Protected Profile Route
+// =========================
 
-        // Calculate offset
-        const offset = (page - 1) * limit;
-
-        // Get students
-        const [rows] = await pool.query(
-            `SELECT *
-             FROM students
-             LIMIT ? OFFSET ?`,
-            [limit, offset]
-        );
+app.get(
+    "/api/profile",
+    authenticateToken,
+    (req, res) => {
 
         res.status(200).json({
-            page: page,
-            limit: limit,
-            students: rows
+            message: "Access granted",
+            user: req.user
         });
-
-    } catch (error) {
-        console.error(error);
-        next(error);
     }
-});
+);
+
+
+// =========================
+// Admin Protected Route
+// =========================
+
+app.get(
+    "/api/admin",
+    authenticateToken,
+    authorizeRole("admin"),
+    (req, res) => {
+
+        res.status(200).json({
+            message: "Welcome Admin",
+            user: req.user
+        });
+    }
+);
 
 
 // =========================
 // Get Student By ID
 // =========================
 
-app.get("/api/students/:id", async (req, res) => {
+app.get("/api/students/:id", async (req, res, next) => {
     try {
+
         const studentId = req.params.id;
 
         const [rows] = await pool.query(
@@ -310,164 +365,183 @@ app.get("/api/students/:id", async (req, res) => {
 
 // =========================
 // Delete Student
+// Admin Only
 // =========================
 
-app.delete("/api/students/:id", async (req, res, next) => {
-    try {
-        const studentId = req.params.id;
+app.delete(
+    "/api/students/:id",
+    authenticateToken,
+    authorizeRole("admin"),
+    async (req, res, next) => {
 
-        const [result] = await pool.query(
-            "DELETE FROM students WHERE student_id = ?",
-            [studentId]
-        );
+        try {
 
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                message: "Student not found"
+            const studentId = req.params.id;
+
+            const [result] = await pool.query(
+                "DELETE FROM students WHERE student_id = ?",
+                [studentId]
+            );
+
+            if (result.affectedRows === 0) {
+                return res.status(404).json({
+                    message: "Student not found"
+                });
+            }
+
+            res.status(200).json({
+                message: "Student deleted successfully",
+                affectedRows: result.affectedRows
             });
+
+        } catch (error) {
+
+            console.error(error);
+            next(error);
         }
-
-        res.status(200).json({
-            message: "Student deleted successfully",
-            affectedRows: result.affectedRows
-        });
-
-    } catch (error) {
-        console.error(error);
-        next(error);
     }
-});
+);
 
 
 // =========================
 // Update Student
+// Admin Only
 // =========================
 
-app.put("/api/students/:id", async (req, res, next) => {
-    try {
-       
-        const studentId = req.params.id;
-        const { name, email, major } = req.body;
+app.put(
+    "/api/students/:id",
+    authenticateToken,
+    authorizeRole("admin"),
+    async (req, res, next) => {
 
+        try {
 
-        // Check required fields
+            const studentId = req.params.id;
 
-        if (
-            !name ||
-            !email ||
-            !major ||
-            !name.trim() ||
-            !email.trim() ||
-            !major.trim()
-        ) {
-            return res.status(400).json({
-                message: "Name, email and major are required"
+            const {
+                name,
+                email,
+                major
+            } = req.body;
+
+            // Check required fields
+            if (
+                !name ||
+                !email ||
+                !major ||
+                !name.trim() ||
+                !email.trim() ||
+                !major.trim()
+            ) {
+                return res.status(400).json({
+                    message: "Name, email and major are required"
+                });
+            }
+
+            // Check email format
+            const emailRegex =
+                /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+            if (!emailRegex.test(email)) {
+                return res.status(400).json({
+                    message: "Invalid email format"
+                });
+            }
+
+            // Update student
+            const [result] = await pool.query(
+                `UPDATE students
+                 SET name = ?, email = ?, major = ?
+                 WHERE student_id = ?`,
+                [
+                    name.trim(),
+                    email.trim(),
+                    major.trim(),
+                    studentId
+                ]
+            );
+
+            // Check if student exists
+            if (result.affectedRows === 0) {
+                return res.status(404).json({
+                    message: "Student not found"
+                });
+            }
+
+            res.status(200).json({
+                message: "Student updated successfully"
             });
+
+        } catch (error) {
+            next(error);
         }
-
-
-        // Check email format
-
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-        if (!emailRegex.test(email)) {
-            return res.status(400).json({
-                message: "Invalid email format"
-            });
-        }
-
-
-        // Update student
-
-        const [result] = await pool.query(
-            `UPDATE students
-             SET name = ?, email = ?, major = ?
-             WHERE student_id = ?`,
-            [
-                name.trim(),
-                email.trim(),
-                major.trim(),
-                studentId
-            ]
-        );
-
-
-        // Check if student exists
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                message: "Student not found"
-            });
-        }
-
-
-        res.status(200).json({
-            message: "Student updated successfully"
-        });
-
-    } catch (error) {
-        next(error);
     }
-});
+);
 
 
 // =========================
 // Create Student
+// Admin Only
 // =========================
 
-app.post("/api/students", async (req, res) => {
-    try {
-        const { name, email, major } = req.body;
+app.post(
+    "/api/students",
+    authenticateToken,
+    authorizeRole("admin"),
+    async (req, res, next) => {
 
+        try {
 
-        // Check required fields
+            const {
+                name,
+                email,
+                major
+            } = req.body;
 
-        if (
-            !name ||
-            !email ||
-            !major ||
-            !name.trim() ||
-            !email.trim() ||
-            !major.trim()
-        ) {
-            return res.status(400).json({
-                message: "Name, email and major are required"
+            // Check required fields
+            if (
+                !name ||
+                !email ||
+                !major ||
+                !name.trim() ||
+                !email.trim() ||
+                !major.trim()
+            ) {
+                return res.status(400).json({
+                    message: "Name, email and major are required"
+                });
+            }
+
+            // Check email format
+            const emailRegex =
+                /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+            if (!emailRegex.test(email)) {
+                return res.status(400).json({
+                    message: "Invalid email format"
+                });
+            }
+
+            // Insert student
+            const [result] = await pool.query(
+                "INSERT INTO students (name, email, major) VALUES (?, ?, ?)",
+                [
+                    name.trim(),
+                    email.trim(),
+                    major.trim()
+                ]
+            );
+
+            res.status(201).json({
+                message: "Student created successfully",
+                student_id: result.insertId
             });
+
+        } catch (error) {
+            next(error);
         }
-
-
-        // Check email format
-
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-        if (!emailRegex.test(email)) {
-            return res.status(400).json({
-                message: "Invalid email format"
-            });
-        }
-
-
-        // Insert student into database
-
-        const [result] = await pool.query(
-            "INSERT INTO students (name, email, major) VALUES (?, ?, ?)",
-            [
-                name.trim(),
-                email.trim(),
-                major.trim()
-            ]
-        );
-
-
-        res.status(201).json({
-            message: "Student created successfully",
-            student_id: result.insertId
-        });
-
-    } catch (error) {
-        next(error);
     }
-});
+);
 
 
 // =========================
@@ -475,6 +549,7 @@ app.post("/api/students", async (req, res) => {
 // =========================
 
 app.use((err, req, res, next) => {
+
     console.error(err);
 
     res.status(500).json({
@@ -488,6 +563,7 @@ app.use((err, req, res, next) => {
 // =========================
 
 app.listen(PORT, () => {
+
     console.log(
         `Day 10 server is running on http://localhost:${PORT}`
     );
