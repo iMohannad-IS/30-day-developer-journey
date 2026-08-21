@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Students</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main class="students-container">
+        <div class="students-card">
+            <h1>Students</h1>
+
+            <table id="studentsTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Major</th>
+                    </tr>
+                </thead>
+                <tbody id="studentsBody"></tbody>
+            </table>
+
+            <div class="pagination">
+                <button id="prevBtn">Previous</button>
+                <span id="pageInfo"></span>
+                <button id="nextBtn">Next</button>
+            </div>
+
+            <p id="message"></p>
+        </div>
+    </main>
+
+    <script src="students.js"></script>
+</body>
+</html>

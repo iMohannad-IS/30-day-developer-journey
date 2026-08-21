@@ -1,12 +1,18 @@
 const express = require("express");
+const path = require("path");
 const mysql = require("mysql2/promise");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const multer = require("multer");
+const cors = require("cors");
 require("dotenv").config();
 
 const app = express();
+app.use(cors());
 
 app.use(express.json());
+
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 const PORT = process.env.PORT || 3000;
 
@@ -21,6 +27,41 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, path.join(__dirname, "uploads"));
+    },
+
+    filename: (req, file, cb) => {
+        const uniqueName =
+            Date.now() + "-" + file.originalname;
+
+        cb(null, uniqueName);
+    }
+});
+
+const fileFilter = (req, file, cb) => {
+
+    const allowedTypes = [
+        "image/jpeg",
+        "image/png",
+        "image/webp"
+    ];
+
+    if (allowedTypes.includes(file.mimetype)) {
+        cb(null, true);
+    } else {
+        cb(new Error("Only JPG, PNG, and WEBP images are allowed"), false);
+    }
+};
+
+const upload = multer({
+    storage: storage,
+    fileFilter: fileFilter,
+    limits: {
+        fileSize: 2 * 1024 * 1024 // 2MB
+    }
+});
 
 // =========================
 // Test Database Connection
@@ -277,6 +318,59 @@ const authenticateToken = (req, res, next) => {
         });
     }
 };
+
+app.post(
+    "/api/profile/avatar",
+    authenticateToken,
+    (req, res, next) => {
+        upload.single("avatar")(req, res, (err) => {
+            if (err instanceof multer.MulterError) {
+                if (err.code === "LIMIT_FILE_SIZE") {
+                    return res.status(400).json({
+                        message: "Image must be smaller than 2MB"
+                    });
+                }
+                return res.status(400).json({
+                    message: err.message
+                });
+            } else if (err) {
+                return res.status(400).json({
+                    message: err.message
+                });
+            }
+            next();
+        });
+    },
+    async (req, res, next) => {
+
+    try {
+
+        if (!req.file) {
+            return res.status(400).json({
+                message: "Avatar is required"
+            });
+        }
+
+        const userId = req.user.user_id;
+
+        await pool.query(
+            "UPDATE users SET avatar = ? WHERE user_id = ?",
+            [req.file.filename, userId]
+        );
+
+        const avatarUrl =
+            `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+
+        res.status(200).json({
+            message: "Avatar uploaded successfully",
+            avatar: avatarUrl
+        });
+
+    } catch (error) {
+        console.error(error);
+        next(error);
+    }
+});
 
 
 // =========================

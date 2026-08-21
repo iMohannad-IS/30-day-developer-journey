@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main class="login-container">
+        <div class="login-card">
+            <h1>Profile</h1>
+            <p class="subtitle">Your account information</p>
+
+            <div id="profileData"></div>
+
+            <p id="message"></p>
+
+            <button id="logoutBtn">Logout</button>
+
+            <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
+
+<h2 style="margin-bottom: 15px;">Upload Avatar</h2>
+
+<img id="avatarPreview" src="" alt="" style="display: none; width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 15px;">
+
+<form id="avatarForm">
+    <div class="form-group">
+        <input type="file" id="avatarInput" accept="image/jpeg,image/png,image/webp" required>
+    </div>
+
+    <button type="submit">Upload Avatar</button>
+
+    <p id="avatarMessage"></p>
+</form>
+        </div>
+    </main>
+
+
+
+    <script src="profile.js"></script>
+</body>
+</html>
