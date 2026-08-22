@@ -4,7 +4,10 @@ const mysql = require("mysql2/promise");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
+<<<<<<< HEAD
 const cors = require("cors");
+=======
+>>>>>>> origin/main
 require("dotenv").config();
 
 const app = express();
